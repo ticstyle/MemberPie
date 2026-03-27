@@ -18,7 +18,7 @@ if sys.platform.startswith('win'):
         ctypes.windll.user32.ShowWindow(hwnd, 6)
 
 # --- Version Info ---
-APP_VERSION = "v0.1.8"
+APP_VERSION = "v0.1.9"
 
 # --- 1. Database Setup (Plain Text CSV) ---
 DB_FILE = 'members.csv'
@@ -39,7 +39,6 @@ def get_all_members():
         with open(DB_FILE, mode='r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # Provide defaults for backward compatibility with older CSV files
                 row['member_since'] = row.get('member_since', '')
                 row['birth_date'] = row.get('birth_date', '')
                 row['phone'] = row.get('phone', '')
@@ -59,7 +58,6 @@ def generate_unique_id():
     members = get_all_members()
     existing_ids = {str(m['memberid']) for m in members}
     while True:
-        # Generate a random 10-digit number
         new_id = str(random.randint(1000000000, 9999999999))
         if new_id not in existing_ids:
             return new_id
@@ -133,8 +131,33 @@ class MemberPieApp:
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
 
+        # --- Mouse Scroll Bindings ---
+        # We only listen for the scroll wheel when the mouse is hovering over the list area
+        self.canvas.bind('<Enter>', self._bind_mousewheel)
+        self.canvas.bind('<Leave>', self._unbind_mousewheel)
+
         self.load_all_members()
         self.search_entry.focus()
+
+    # --- Mouse Wheel Logic ---
+    def _bind_mousewheel(self, event):
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", self._on_mousewheel) # Linux scroll up
+        self.canvas.bind_all("<Button-5>", self._on_mousewheel) # Linux scroll down
+
+    def _unbind_mousewheel(self, event):
+        self.canvas.unbind_all("<MouseWheel>")
+        self.canvas.unbind_all("<Button-4>")
+        self.canvas.unbind_all("<Button-5>")
+
+    def _on_mousewheel(self, event):
+        # Cross-platform handling of scroll direction
+        if sys.platform == "darwin": # macOS
+            self.canvas.yview_scroll(int(-1 * (event.delta)), "units")
+        elif event.num == 4 or event.delta > 0:
+            self.canvas.yview_scroll(-1, "units")
+        elif event.num == 5 or event.delta < 0:
+            self.canvas.yview_scroll(1, "units")
 
     # --- Backup Logic ---
     def create_backup(self):
@@ -247,7 +270,6 @@ class MemberPieApp:
         tk.Label(header_frame, text=name, font=("Arial", 16, "bold")).pack(side=tk.LEFT)
         tk.Label(header_frame, text=status_text.upper(), font=("Arial", 12, "bold"), fg=status_color).pack(side=tk.RIGHT)
 
-        # Member ID and Type Sub-header
         sub_header_text = f"Member ID: {memberid}"
         if member_type:
             sub_header_text += f"   |   Type: {member_type}"
@@ -261,7 +283,7 @@ class MemberPieApp:
         col1.pack(side=tk.LEFT, padx=(0, 40))
         
         if birth_date: tk.Label(col1, text=f"Birth Date: {birth_date}", font=("Arial", 11)).pack(anchor="w", pady=2)
-        tk.Label(col1, text=f"Member Since: {member_since}", font=("Arial", 11)).pack(anchor="w", pady=2)
+        if member_since: tk.Label(col1, text=f"Member Since: {member_since}", font=("Arial", 11)).pack(anchor="w", pady=2)
         tk.Label(col1, text=f"Paid Until: {end_date}", font=("Arial", 11)).pack(anchor="w", pady=2)
 
         col2 = tk.Frame(details_frame)
@@ -317,7 +339,6 @@ class MemberPieApp:
     def open_form_window(self, mode="add", member_data=None):
         self.form_win = tk.Toplevel(self.root)
         self.form_win.title("Add New Member" if mode == "add" else "Edit Member")
-        # Made window slightly taller to accommodate the new fields
         self.form_win.geometry("480x920")
         self.form_win.transient(self.root) 
 
@@ -325,7 +346,6 @@ class MemberPieApp:
         self.original_memberid = None
         self.original_photo_path = ""
 
-        # UI Fields
         tk.Label(self.form_win, text="Member ID:").pack(pady=2)
         self.entry_id = tk.Entry(self.form_win, width=35)
         self.entry_id.pack()
@@ -395,8 +415,9 @@ class MemberPieApp:
             btn_text = "Update Member"
             btn_command = self.update_member
         else:
-            self.entry_id.insert(0, generate_unique_id()) # Auto-fill unique 10-digit ID
-            self.entry_since.insert(0, get_today_date()) 
+            self.entry_id.insert(0, generate_unique_id())
+            # Intentionally left blank by default so it's not strictly required unless you type it
+            self.entry_since.insert(0, "") 
             self.entry_date.insert(0, get_next_year_date()) 
             self.show_default_preview()
             btn_text = "Save New Member"
@@ -491,24 +512,24 @@ class MemberPieApp:
         end_date = self.entry_date.get().strip()
         notes = self.text_notes.get("1.0", tk.END).strip()[:500] 
 
+        # Only restrict ID, Name, and End Date
         if not memberid_str or not name or not end_date:
             messagebox.showwarning("Error", "ID, Name, and End Date fields must be filled!")
             return None
 
-        # Ensuring the member ID is stored properly and is a number
         try:
             int(memberid_str)
         except ValueError:
             messagebox.showwarning("Error", "Member ID must be numbers only!")
             return None
 
-        # Validate Date formats
+        # Only check the date formatting IF they actually typed something into the field
         try:
             datetime.strptime(end_date, "%Y-%m-%d")
             if member_since: datetime.strptime(member_since, "%Y-%m-%d")
             if birth_date: datetime.strptime(birth_date, "%Y-%m-%d")
         except ValueError:
-            messagebox.showwarning("Error", "All Dates must be in YYYY-MM-DD format!")
+            messagebox.showwarning("Error", "If providing a date, it must be in YYYY-MM-DD format!")
             return None
 
         return memberid_str, name, birth_date, member_since, end_date, phone, email, member_type, notes
