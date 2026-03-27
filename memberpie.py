@@ -5,6 +5,7 @@ import os
 import shutil
 import zipfile
 import sys
+import random
 from datetime import datetime
 import cv2
 from PIL import Image, ImageTk, ImageDraw
@@ -14,14 +15,14 @@ if sys.platform.startswith('win'):
     import ctypes
     hwnd = ctypes.windll.kernel32.GetConsoleWindow()
     if hwnd != 0:
-        ctypes.windll.user32.ShowWindow(hwnd, 6) # 6 = SW_MINIMIZE
+        ctypes.windll.user32.ShowWindow(hwnd, 6)
 
 # --- Version Info ---
-APP_VERSION = "v0.1.7"
+APP_VERSION = "v0.1.8"
 
 # --- 1. Database Setup (Plain Text CSV) ---
 DB_FILE = 'members.csv'
-FIELDNAMES = ['memberid', 'name', 'member_since', 'end_date', 'phone', 'email', 'notes', 'photo_path']
+FIELDNAMES = ['memberid', 'name', 'member_since', 'end_date', 'birth_date', 'phone', 'email', 'member_type', 'notes', 'photo_path']
 
 def setup_db():
     if not os.path.exists(DB_FILE):
@@ -38,9 +39,12 @@ def get_all_members():
         with open(DB_FILE, mode='r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
+                # Provide defaults for backward compatibility with older CSV files
                 row['member_since'] = row.get('member_since', '')
+                row['birth_date'] = row.get('birth_date', '')
                 row['phone'] = row.get('phone', '')
                 row['email'] = row.get('email', '')
+                row['member_type'] = row.get('member_type', '')
                 row['notes'] = row.get('notes', '')
                 members.append(row)
     return members
@@ -50,6 +54,15 @@ def save_all_members(members):
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
         writer.writeheader()
         writer.writerows(members)
+
+def generate_unique_id():
+    members = get_all_members()
+    existing_ids = {str(m['memberid']) for m in members}
+    while True:
+        # Generate a random 10-digit number
+        new_id = str(random.randint(1000000000, 9999999999))
+        if new_id not in existing_ids:
+            return new_id
 
 def get_today_date():
     return datetime.today().strftime('%Y-%m-%d')
@@ -76,7 +89,7 @@ class MemberPieApp:
     def __init__(self, root):
         self.root = root
         self.root.title(f"MemberPie - Membership Management {APP_VERSION}")
-        self.root.geometry("800x600")
+        self.root.geometry("800x700")
         
         self.root.state('zoomed')
 
@@ -196,18 +209,18 @@ class MemberPieApp:
         name = member['name']
         member_since = member.get('member_since', '')
         end_date = member['end_date']
+        birth_date = member.get('birth_date', '')
         phone = member.get('phone', '')
         email = member.get('email', '')
+        member_type = member.get('member_type', '')
         notes = member.get('notes', '')
         photo_path = member['photo_path']
         
         status_text, status_color = self.calculate_status(end_date)
 
-        # The Card Container
         card = tk.Frame(self.display_frame, bd=2, relief=tk.GROOVE, padx=15, pady=15, cursor="hand2")
         card.pack(fill=tk.X, padx=20, pady=8) 
 
-        # Photo (Left side)
         lbl_img = tk.Label(card, cursor="hand2")
         lbl_img.pack(side=tk.LEFT, padx=(0, 20))
         try:
@@ -225,43 +238,41 @@ class MemberPieApp:
             
         lbl_img.bind("<Button-1>", lambda event, p=photo_path: self.show_full_photo(p))
 
-        # Member Info (Right side)
         info_frame = tk.Frame(card)
         info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # 1. Header (Name & Status)
         header_frame = tk.Frame(info_frame)
         header_frame.pack(fill=tk.X, pady=(0, 2))
         
         tk.Label(header_frame, text=name, font=("Arial", 16, "bold")).pack(side=tk.LEFT)
         tk.Label(header_frame, text=status_text.upper(), font=("Arial", 12, "bold"), fg=status_color).pack(side=tk.RIGHT)
 
-        # 2. Member ID (Subtle)
-        tk.Label(info_frame, text=f"Member ID: {memberid}", font=("Arial", 11), fg="dim gray").pack(anchor="w", pady=(0, 10))
+        # Member ID and Type Sub-header
+        sub_header_text = f"Member ID: {memberid}"
+        if member_type:
+            sub_header_text += f"   |   Type: {member_type}"
+            
+        tk.Label(info_frame, text=sub_header_text, font=("Arial", 11), fg="dim gray").pack(anchor="w", pady=(0, 10))
 
-        # 3. Two-Column Grid for Dates and Contact Info
         details_frame = tk.Frame(info_frame)
         details_frame.pack(fill=tk.X)
 
-        # Left Column: Dates
         col1 = tk.Frame(details_frame)
         col1.pack(side=tk.LEFT, padx=(0, 40))
         
+        if birth_date: tk.Label(col1, text=f"Birth Date: {birth_date}", font=("Arial", 11)).pack(anchor="w", pady=2)
         tk.Label(col1, text=f"Member Since: {member_since}", font=("Arial", 11)).pack(anchor="w", pady=2)
         tk.Label(col1, text=f"Paid Until: {end_date}", font=("Arial", 11)).pack(anchor="w", pady=2)
 
-        # Right Column: Contact
         col2 = tk.Frame(details_frame)
         col2.pack(side=tk.LEFT)
         
         if phone: tk.Label(col2, text=f"📞 {phone}", font=("Arial", 11)).pack(anchor="w", pady=2)
         if email: tk.Label(col2, text=f"✉️ {email}", font=("Arial", 11)).pack(anchor="w", pady=2)
 
-        # 4. Notes (Bottom)
         if notes:
             tk.Label(info_frame, text=notes, font=("Arial", 10, "italic"), fg="gray", wraplength=450, justify=tk.LEFT).pack(anchor="w", pady=(10, 0))
 
-        # Make card clickable (excluding the photo)
         self.make_clickable(card, member, exclude_widgets=[lbl_img])
 
     def make_clickable(self, widget, member_data, exclude_widgets=None):
@@ -306,39 +317,49 @@ class MemberPieApp:
     def open_form_window(self, mode="add", member_data=None):
         self.form_win = tk.Toplevel(self.root)
         self.form_win.title("Add New Member" if mode == "add" else "Edit Member")
-        self.form_win.geometry("450x850")
+        # Made window slightly taller to accommodate the new fields
+        self.form_win.geometry("480x920")
         self.form_win.transient(self.root) 
 
         self.current_photo_path = ""
         self.original_memberid = None
         self.original_photo_path = ""
 
-        tk.Label(self.form_win, text="Member ID (Integer):").pack(pady=2)
-        self.entry_id = tk.Entry(self.form_win, width=30)
+        # UI Fields
+        tk.Label(self.form_win, text="Member ID:").pack(pady=2)
+        self.entry_id = tk.Entry(self.form_win, width=35)
         self.entry_id.pack()
 
+        tk.Label(self.form_win, text="Member Type:").pack(pady=2)
+        self.entry_type = tk.Entry(self.form_win, width=35)
+        self.entry_type.pack()
+
         tk.Label(self.form_win, text="Full Name:").pack(pady=2)
-        self.entry_name = tk.Entry(self.form_win, width=30)
+        self.entry_name = tk.Entry(self.form_win, width=35)
         self.entry_name.pack()
 
+        tk.Label(self.form_win, text="Birth Date (YYYY-MM-DD):").pack(pady=2)
+        self.entry_birth = tk.Entry(self.form_win, width=35)
+        self.entry_birth.pack()
+
         tk.Label(self.form_win, text="Phone Number:").pack(pady=2)
-        self.entry_phone = tk.Entry(self.form_win, width=30)
+        self.entry_phone = tk.Entry(self.form_win, width=35)
         self.entry_phone.pack()
 
         tk.Label(self.form_win, text="Email:").pack(pady=2)
-        self.entry_email = tk.Entry(self.form_win, width=30)
+        self.entry_email = tk.Entry(self.form_win, width=35)
         self.entry_email.pack()
 
         tk.Label(self.form_win, text="Member Since (YYYY-MM-DD):").pack(pady=2)
-        self.entry_since = tk.Entry(self.form_win, width=30)
+        self.entry_since = tk.Entry(self.form_win, width=35)
         self.entry_since.pack()
 
         tk.Label(self.form_win, text="End Date (YYYY-MM-DD):").pack(pady=2)
-        self.entry_date = tk.Entry(self.form_win, width=30)
+        self.entry_date = tk.Entry(self.form_win, width=35)
         self.entry_date.pack()
 
         tk.Label(self.form_win, text="Notes (max 500 characters):").pack(pady=2)
-        self.text_notes = tk.Text(self.form_win, height=4, width=35, font=("Arial", 10))
+        self.text_notes = tk.Text(self.form_win, height=4, width=40, font=("Arial", 10))
         self.text_notes.pack()
 
         tk.Label(self.form_win, text="Profile Photo:").pack(pady=10)
@@ -356,7 +377,9 @@ class MemberPieApp:
             self.original_photo_path = member_data['photo_path']
             
             self.entry_id.insert(0, member_data['memberid'])
+            self.entry_type.insert(0, member_data.get('member_type', ''))
             self.entry_name.insert(0, member_data['name'])
+            self.entry_birth.insert(0, member_data.get('birth_date', ''))
             self.entry_phone.insert(0, member_data.get('phone', ''))
             self.entry_email.insert(0, member_data.get('email', ''))
             self.entry_since.insert(0, member_data.get('member_since', ''))
@@ -372,6 +395,7 @@ class MemberPieApp:
             btn_text = "Update Member"
             btn_command = self.update_member
         else:
+            self.entry_id.insert(0, generate_unique_id()) # Auto-fill unique 10-digit ID
             self.entry_since.insert(0, get_today_date()) 
             self.entry_date.insert(0, get_next_year_date()) 
             self.show_default_preview()
@@ -459,8 +483,10 @@ class MemberPieApp:
     def validate_inputs(self):
         memberid_str = self.entry_id.get().strip()
         name = self.entry_name.get().strip()
+        birth_date = self.entry_birth.get().strip()
         phone = self.entry_phone.get().strip()
         email = self.entry_email.get().strip()
+        member_type = self.entry_type.get().strip()
         member_since = self.entry_since.get().strip()
         end_date = self.entry_date.get().strip()
         notes = self.text_notes.get("1.0", tk.END).strip()[:500] 
@@ -469,26 +495,28 @@ class MemberPieApp:
             messagebox.showwarning("Error", "ID, Name, and End Date fields must be filled!")
             return None
 
+        # Ensuring the member ID is stored properly and is a number
         try:
-            memberid = int(memberid_str)
+            int(memberid_str)
         except ValueError:
-            messagebox.showwarning("Error", "Member ID must be a number!")
+            messagebox.showwarning("Error", "Member ID must be numbers only!")
             return None
 
+        # Validate Date formats
         try:
             datetime.strptime(end_date, "%Y-%m-%d")
-            if member_since:
-                datetime.strptime(member_since, "%Y-%m-%d")
+            if member_since: datetime.strptime(member_since, "%Y-%m-%d")
+            if birth_date: datetime.strptime(birth_date, "%Y-%m-%d")
         except ValueError:
-            messagebox.showwarning("Error", "Dates must be in YYYY-MM-DD format!")
+            messagebox.showwarning("Error", "All Dates must be in YYYY-MM-DD format!")
             return None
 
-        return str(memberid), name, member_since, end_date, phone, email, notes
+        return memberid_str, name, birth_date, member_since, end_date, phone, email, member_type, notes
 
     def save_new_member(self):
         inputs = self.validate_inputs()
         if not inputs: return
-        memberid, name, member_since, end_date, phone, email, notes = inputs
+        memberid, name, birth_date, member_since, end_date, phone, email, member_type, notes = inputs
         
         members = get_all_members()
         
@@ -501,10 +529,12 @@ class MemberPieApp:
         members.append({
             'memberid': memberid,
             'name': name,
+            'birth_date': birth_date,
             'member_since': member_since,
             'end_date': end_date,
             'phone': phone,
             'email': email,
+            'member_type': member_type,
             'notes': notes,
             'photo_path': final_photo_path
         })
@@ -518,7 +548,7 @@ class MemberPieApp:
     def update_member(self):
         inputs = self.validate_inputs()
         if not inputs: return
-        memberid, name, member_since, end_date, phone, email, notes = inputs
+        memberid, name, birth_date, member_since, end_date, phone, email, member_type, notes = inputs
         
         members = get_all_members()
 
@@ -533,10 +563,12 @@ class MemberPieApp:
             if m['memberid'] == self.original_memberid:
                 m['memberid'] = memberid
                 m['name'] = name
+                m['birth_date'] = birth_date
                 m['member_since'] = member_since
                 m['end_date'] = end_date
                 m['phone'] = phone
                 m['email'] = email
+                m['member_type'] = member_type
                 m['notes'] = notes
                 m['photo_path'] = final_photo_path
                 break
