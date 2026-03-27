@@ -18,7 +18,7 @@ if sys.platform.startswith('win'):
         ctypes.windll.user32.ShowWindow(hwnd, 6)
 
 # --- Version Info ---
-APP_VERSION = "v0.1.9"
+APP_VERSION = "v0.1.10"
 
 # --- 1. Database Setup (Plain Text CSV) ---
 DB_FILE = 'members.csv'
@@ -132,7 +132,6 @@ class MemberPieApp:
         self.scrollbar.pack(side="right", fill="y")
 
         # --- Mouse Scroll Bindings ---
-        # We only listen for the scroll wheel when the mouse is hovering over the list area
         self.canvas.bind('<Enter>', self._bind_mousewheel)
         self.canvas.bind('<Leave>', self._unbind_mousewheel)
 
@@ -142,8 +141,8 @@ class MemberPieApp:
     # --- Mouse Wheel Logic ---
     def _bind_mousewheel(self, event):
         self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-        self.canvas.bind_all("<Button-4>", self._on_mousewheel) # Linux scroll up
-        self.canvas.bind_all("<Button-5>", self._on_mousewheel) # Linux scroll down
+        self.canvas.bind_all("<Button-4>", self._on_mousewheel) 
+        self.canvas.bind_all("<Button-5>", self._on_mousewheel) 
 
     def _unbind_mousewheel(self, event):
         self.canvas.unbind_all("<MouseWheel>")
@@ -151,8 +150,7 @@ class MemberPieApp:
         self.canvas.unbind_all("<Button-5>")
 
     def _on_mousewheel(self, event):
-        # Cross-platform handling of scroll direction
-        if sys.platform == "darwin": # macOS
+        if sys.platform == "darwin": 
             self.canvas.yview_scroll(int(-1 * (event.delta)), "units")
         elif event.num == 4 or event.delta > 0:
             self.canvas.yview_scroll(-1, "units")
@@ -346,17 +344,18 @@ class MemberPieApp:
         self.original_memberid = None
         self.original_photo_path = ""
 
+        # UI Fields Reordered
         tk.Label(self.form_win, text="Member ID:").pack(pady=2)
         self.entry_id = tk.Entry(self.form_win, width=35)
         self.entry_id.pack()
 
-        tk.Label(self.form_win, text="Member Type:").pack(pady=2)
-        self.entry_type = tk.Entry(self.form_win, width=35)
-        self.entry_type.pack()
-
         tk.Label(self.form_win, text="Full Name:").pack(pady=2)
         self.entry_name = tk.Entry(self.form_win, width=35)
         self.entry_name.pack()
+
+        tk.Label(self.form_win, text="Member Type:").pack(pady=2)
+        self.entry_type = tk.Entry(self.form_win, width=35)
+        self.entry_type.pack()
 
         tk.Label(self.form_win, text="Birth Date (YYYY-MM-DD):").pack(pady=2)
         self.entry_birth = tk.Entry(self.form_win, width=35)
@@ -374,7 +373,8 @@ class MemberPieApp:
         self.entry_since = tk.Entry(self.form_win, width=35)
         self.entry_since.pack()
 
-        tk.Label(self.form_win, text="End Date (YYYY-MM-DD):").pack(pady=2)
+        # Renamed to Paid Until
+        tk.Label(self.form_win, text="Paid Until (YYYY-MM-DD):").pack(pady=2)
         self.entry_date = tk.Entry(self.form_win, width=35)
         self.entry_date.pack()
 
@@ -397,8 +397,8 @@ class MemberPieApp:
             self.original_photo_path = member_data['photo_path']
             
             self.entry_id.insert(0, member_data['memberid'])
-            self.entry_type.insert(0, member_data.get('member_type', ''))
             self.entry_name.insert(0, member_data['name'])
+            self.entry_type.insert(0, member_data.get('member_type', ''))
             self.entry_birth.insert(0, member_data.get('birth_date', ''))
             self.entry_phone.insert(0, member_data.get('phone', ''))
             self.entry_email.insert(0, member_data.get('email', ''))
@@ -416,8 +416,7 @@ class MemberPieApp:
             btn_command = self.update_member
         else:
             self.entry_id.insert(0, generate_unique_id())
-            # Intentionally left blank by default so it's not strictly required unless you type it
-            self.entry_since.insert(0, "") 
+            self.entry_since.insert(0, get_today_date()) # Auto-fills today's date
             self.entry_date.insert(0, get_next_year_date()) 
             self.show_default_preview()
             btn_text = "Save New Member"
@@ -512,9 +511,8 @@ class MemberPieApp:
         end_date = self.entry_date.get().strip()
         notes = self.text_notes.get("1.0", tk.END).strip()[:500] 
 
-        # Only restrict ID, Name, and End Date
         if not memberid_str or not name or not end_date:
-            messagebox.showwarning("Error", "ID, Name, and End Date fields must be filled!")
+            messagebox.showwarning("Error", "ID, Name, and Paid Until fields must be filled!")
             return None
 
         try:
@@ -523,7 +521,6 @@ class MemberPieApp:
             messagebox.showwarning("Error", "Member ID must be numbers only!")
             return None
 
-        # Only check the date formatting IF they actually typed something into the field
         try:
             datetime.strptime(end_date, "%Y-%m-%d")
             if member_since: datetime.strptime(member_since, "%Y-%m-%d")
