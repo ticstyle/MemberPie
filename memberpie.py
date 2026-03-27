@@ -4,12 +4,13 @@ import csv
 import os
 import shutil
 import zipfile
+import sys
 from datetime import datetime
 import cv2
 from PIL import Image, ImageTk, ImageDraw
 
 # --- Version Info ---
-APP_VERSION = "v0.1.4"
+APP_VERSION = "v0.1.5"
 
 # --- 1. Database Setup (Plain Text CSV) ---
 DB_FILE = 'members.csv'
@@ -67,11 +68,9 @@ def create_default_avatar():
 class MemberPieApp:
     def __init__(self, root):
         self.root = root
-        # Title now includes the Semantic Versioning variable
         self.root.title(f"MemberPie - Membership Management {APP_VERSION}")
         self.root.geometry("800x600")
         
-        # Maximize the window on startup (Windows standard)
         self.root.state('zoomed')
 
         # Top Bar
@@ -85,7 +84,6 @@ class MemberPieApp:
         self.search_entry.pack(side=tk.LEFT, padx=10)
         self.search_entry.bind('<KeyRelease>', self.perform_search) 
 
-        # Action Buttons (Packed to the right)
         self.btn_add = tk.Button(top_frame, text="+ Add Member", command=self.open_add_window, bg="lightblue")
         self.btn_add.pack(side=tk.RIGHT, padx=10)
 
@@ -96,7 +94,7 @@ class MemberPieApp:
         credits_label = tk.Label(root, text="Brought to you by dualityps @ Ticstyle", font=("Arial", 10, "italic"), fg="gray")
         credits_label.pack(side=tk.BOTTOM, pady=5)
 
-        # Main Display Area (Canvas + Scrollbar)
+        # Main Display Area 
         canvas_frame = tk.Frame(root)
         canvas_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
@@ -120,8 +118,9 @@ class MemberPieApp:
 
     # --- Backup Logic ---
     def create_backup(self):
-        # Generate a default filename with today's date
-        default_name = f"MemberPie_Backup_{datetime.today().strftime('%Y%m%d%hh%mm')}.zip"
+        # Now includes hours, minutes, and seconds
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        default_name = f"MemberPie_Backup_{timestamp}.zip"
         
         backup_path = filedialog.asksaveasfilename(
             defaultextension=".zip",
@@ -131,22 +130,18 @@ class MemberPieApp:
         )
         
         if not backup_path:
-            return # User cancelled
+            return 
 
         try:
-            # Create the zip file
             with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                # 1. Add the database file
                 if os.path.exists(DB_FILE):
                     zipf.write(DB_FILE, arcname=DB_FILE)
                 
-                # 2. Add all photos in the directory
                 photo_dir = 'member_photos'
                 if os.path.exists(photo_dir):
                     for root_dir, _, files in os.walk(photo_dir):
                         for file in files:
                             file_path = os.path.join(root_dir, file)
-                            # Keep folder structure inside the zip
                             arcname = os.path.relpath(file_path, start=os.path.curdir)
                             zipf.write(file_path, arcname=arcname)
                             
@@ -205,7 +200,6 @@ class MemberPieApp:
         card = tk.Frame(self.display_frame, bd=2, relief=tk.GROOVE, padx=10, pady=10, cursor="hand2")
         card.pack(fill=tk.X, padx=20, pady=5, ipadx=50) 
 
-        # Profile Picture
         lbl_img = tk.Label(card)
         lbl_img.pack(side=tk.LEFT, padx=10)
         try:
@@ -221,7 +215,6 @@ class MemberPieApp:
         except Exception:
             pass
 
-        # Member Info
         info_frame = tk.Frame(card)
         info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=20)
 
@@ -345,20 +338,41 @@ class MemberPieApp:
             self.show_preview(fil)
 
     def capture_photo(self):
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            messagebox.showerror("Error", "Could not access the webcam.")
-            return
+        # Change cursor to a loading spinner to show the app is working
+        self.form_win.config(cursor="watch")
+        self.form_win.update()
 
-        ret, frame = cap.read()
-        if ret:
-            temp_path = os.path.join("member_photos", "temp_capture.jpg")
-            cv2.imwrite(temp_path, frame)
-            self.current_photo_path = temp_path
-            self.show_preview(temp_path)
-        else:
-            messagebox.showerror("Error", "Failed to capture image.")
-        cap.release()
+        try:
+            # Use DirectShow on Windows to prevent OpenCV from freezing the GUI
+            if sys.platform.startswith('win'):
+                cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+            else:
+                cap = cv2.VideoCapture(0)
+
+            if not cap.isOpened():
+                messagebox.showerror("Error", "Could not access the webcam.")
+                return
+
+            # Read a few throwaway frames to let the camera sensor adjust exposure
+            for _ in range(5):
+                cap.read()
+
+            ret, frame = cap.read()
+            if ret:
+                temp_path = os.path.join("member_photos", "temp_capture.jpg")
+                cv2.imwrite(temp_path, frame)
+                self.current_photo_path = temp_path
+                self.show_preview(temp_path)
+            else:
+                messagebox.showerror("Error", "Failed to capture image.")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Webcam error: {e}")
+        finally:
+            # Ensure the camera is always released and cursor is restored
+            if 'cap' in locals() and cap.isOpened():
+                cap.release()
+            self.form_win.config(cursor="")
 
     def show_preview(self, path):
         img = Image.open(path)
