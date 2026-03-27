@@ -17,7 +17,7 @@ if sys.platform.startswith('win'):
         ctypes.windll.user32.ShowWindow(hwnd, 6) # 6 = SW_MINIMIZE
 
 # --- Version Info ---
-APP_VERSION = "v0.1.6"
+APP_VERSION = "v0.1.7"
 
 # --- 1. Database Setup (Plain Text CSV) ---
 DB_FILE = 'members.csv'
@@ -203,12 +203,13 @@ class MemberPieApp:
         
         status_text, status_color = self.calculate_status(end_date)
 
-        card = tk.Frame(self.display_frame, bd=2, relief=tk.GROOVE, padx=10, pady=10, cursor="hand2")
-        card.pack(fill=tk.X, padx=20, pady=5, ipadx=50) 
+        # The Card Container
+        card = tk.Frame(self.display_frame, bd=2, relief=tk.GROOVE, padx=15, pady=15, cursor="hand2")
+        card.pack(fill=tk.X, padx=20, pady=8) 
 
-        # Explicitly set cursor to hand2 so it acts like a button
+        # Photo (Left side)
         lbl_img = tk.Label(card, cursor="hand2")
-        lbl_img.pack(side=tk.LEFT, padx=10)
+        lbl_img.pack(side=tk.LEFT, padx=(0, 20))
         try:
             if photo_path and os.path.exists(photo_path):
                 img = Image.open(photo_path)
@@ -222,34 +223,45 @@ class MemberPieApp:
         except Exception:
             pass
             
-        # Bind the image click to show the full photo
         lbl_img.bind("<Button-1>", lambda event, p=photo_path: self.show_full_photo(p))
 
+        # Member Info (Right side)
         info_frame = tk.Frame(card)
-        info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=20)
+        info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
+        # 1. Header (Name & Status)
         header_frame = tk.Frame(info_frame)
-        header_frame.pack(fill=tk.X)
+        header_frame.pack(fill=tk.X, pady=(0, 2))
         
-        left_header = tk.Frame(header_frame)
-        left_header.pack(side=tk.LEFT)
-        tk.Label(left_header, text=f"ID: {memberid}", font=("Arial", 14, "bold")).pack(anchor="w", pady=1)
-        tk.Label(left_header, text=f"Name: {name}", font=("Arial", 14)).pack(anchor="w", pady=1)
-        tk.Label(left_header, text=f"Member Since: {member_since}", font=("Arial", 10, "italic")).pack(anchor="w", pady=1)
-        tk.Label(left_header, text=f"Paid Until: {end_date}", font=("Arial", 12)).pack(anchor="w", pady=1)
+        tk.Label(header_frame, text=name, font=("Arial", 16, "bold")).pack(side=tk.LEFT)
+        tk.Label(header_frame, text=status_text.upper(), font=("Arial", 12, "bold"), fg=status_color).pack(side=tk.RIGHT)
+
+        # 2. Member ID (Subtle)
+        tk.Label(info_frame, text=f"Member ID: {memberid}", font=("Arial", 11), fg="dim gray").pack(anchor="w", pady=(0, 10))
+
+        # 3. Two-Column Grid for Dates and Contact Info
+        details_frame = tk.Frame(info_frame)
+        details_frame.pack(fill=tk.X)
+
+        # Left Column: Dates
+        col1 = tk.Frame(details_frame)
+        col1.pack(side=tk.LEFT, padx=(0, 40))
         
-        contact_frame = tk.Frame(info_frame)
-        contact_frame.pack(fill=tk.X, pady=5)
-        if phone: tk.Label(contact_frame, text=f"📞 {phone}", font=("Arial", 10)).pack(side=tk.LEFT, padx=(0, 15))
-        if email: tk.Label(contact_frame, text=f"✉️ {email}", font=("Arial", 10)).pack(side=tk.LEFT)
+        tk.Label(col1, text=f"Member Since: {member_since}", font=("Arial", 11)).pack(anchor="w", pady=2)
+        tk.Label(col1, text=f"Paid Until: {end_date}", font=("Arial", 11)).pack(anchor="w", pady=2)
 
-        lbl_status = tk.Label(header_frame, text=status_text.upper(), font=("Arial", 14, "bold"), fg=status_color)
-        lbl_status.pack(side=tk.RIGHT, anchor="n")
+        # Right Column: Contact
+        col2 = tk.Frame(details_frame)
+        col2.pack(side=tk.LEFT)
+        
+        if phone: tk.Label(col2, text=f"📞 {phone}", font=("Arial", 11)).pack(anchor="w", pady=2)
+        if email: tk.Label(col2, text=f"✉️ {email}", font=("Arial", 11)).pack(anchor="w", pady=2)
 
+        # 4. Notes (Bottom)
         if notes:
-            tk.Label(info_frame, text=notes, font=("Arial", 10, "italic"), fg="gray", wraplength=350, justify=tk.LEFT).pack(anchor="w", pady=5)
+            tk.Label(info_frame, text=notes, font=("Arial", 10, "italic"), fg="gray", wraplength=450, justify=tk.LEFT).pack(anchor="w", pady=(10, 0))
 
-        # We pass `[lbl_img]` to exclude it from opening the Edit Window
+        # Make card clickable (excluding the photo)
         self.make_clickable(card, member, exclude_widgets=[lbl_img])
 
     def make_clickable(self, widget, member_data, exclude_widgets=None):
@@ -257,7 +269,7 @@ class MemberPieApp:
             exclude_widgets = []
             
         if widget in exclude_widgets:
-            return # Skip binding the edit function to this widget
+            return 
             
         widget.bind("<Button-1>", lambda event, m=member_data: self.open_edit_window(m))
         for child in widget.winfo_children():
@@ -266,7 +278,7 @@ class MemberPieApp:
     def show_full_photo(self, photo_path):
         top = tk.Toplevel(self.root)
         top.title("Member Photo")
-        top.transient(self.root) # Keeps popup in front of main app
+        top.transient(self.root) 
         
         lbl = tk.Label(top)
         lbl.pack(padx=20, pady=20)
