@@ -9,8 +9,15 @@ from datetime import datetime
 import cv2
 from PIL import Image, ImageTk, ImageDraw
 
+# --- Auto-Minimize Terminal on Windows ---
+if sys.platform.startswith('win'):
+    import ctypes
+    hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+    if hwnd != 0:
+        ctypes.windll.user32.ShowWindow(hwnd, 6) # 6 = SW_MINIMIZE
+
 # --- Version Info ---
-APP_VERSION = "v0.1.5"
+APP_VERSION = "v0.1.6"
 
 # --- 1. Database Setup (Plain Text CSV) ---
 DB_FILE = 'members.csv'
@@ -118,7 +125,6 @@ class MemberPieApp:
 
     # --- Backup Logic ---
     def create_backup(self):
-        # Now includes hours, minutes, and seconds
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         default_name = f"MemberPie_Backup_{timestamp}.zip"
         
@@ -200,7 +206,8 @@ class MemberPieApp:
         card = tk.Frame(self.display_frame, bd=2, relief=tk.GROOVE, padx=10, pady=10, cursor="hand2")
         card.pack(fill=tk.X, padx=20, pady=5, ipadx=50) 
 
-        lbl_img = tk.Label(card)
+        # Explicitly set cursor to hand2 so it acts like a button
+        lbl_img = tk.Label(card, cursor="hand2")
         lbl_img.pack(side=tk.LEFT, padx=10)
         try:
             if photo_path and os.path.exists(photo_path):
@@ -214,6 +221,9 @@ class MemberPieApp:
             lbl_img.image = photo 
         except Exception:
             pass
+            
+        # Bind the image click to show the full photo
+        lbl_img.bind("<Button-1>", lambda event, p=photo_path: self.show_full_photo(p))
 
         info_frame = tk.Frame(card)
         info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=20)
@@ -239,12 +249,40 @@ class MemberPieApp:
         if notes:
             tk.Label(info_frame, text=notes, font=("Arial", 10, "italic"), fg="gray", wraplength=350, justify=tk.LEFT).pack(anchor="w", pady=5)
 
-        self.make_clickable(card, member)
+        # We pass `[lbl_img]` to exclude it from opening the Edit Window
+        self.make_clickable(card, member, exclude_widgets=[lbl_img])
 
-    def make_clickable(self, widget, member_data):
+    def make_clickable(self, widget, member_data, exclude_widgets=None):
+        if exclude_widgets is None:
+            exclude_widgets = []
+            
+        if widget in exclude_widgets:
+            return # Skip binding the edit function to this widget
+            
         widget.bind("<Button-1>", lambda event, m=member_data: self.open_edit_window(m))
         for child in widget.winfo_children():
-            self.make_clickable(child, member_data)
+            self.make_clickable(child, member_data, exclude_widgets)
+
+    def show_full_photo(self, photo_path):
+        top = tk.Toplevel(self.root)
+        top.title("Member Photo")
+        top.transient(self.root) # Keeps popup in front of main app
+        
+        lbl = tk.Label(top)
+        lbl.pack(padx=20, pady=20)
+        
+        try:
+            if photo_path and os.path.exists(photo_path):
+                img = Image.open(photo_path)
+            else:
+                img = create_default_avatar()
+                
+            photo = ImageTk.PhotoImage(img)
+            lbl.config(image=photo)
+            lbl.image = photo 
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not load image: {e}")
+            top.destroy()
 
     # --- 3. Add / Edit Member Windows ---
     def open_add_window(self):
@@ -338,12 +376,10 @@ class MemberPieApp:
             self.show_preview(fil)
 
     def capture_photo(self):
-        # Change cursor to a loading spinner to show the app is working
         self.form_win.config(cursor="watch")
         self.form_win.update()
 
         try:
-            # Use DirectShow on Windows to prevent OpenCV from freezing the GUI
             if sys.platform.startswith('win'):
                 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
             else:
@@ -353,7 +389,6 @@ class MemberPieApp:
                 messagebox.showerror("Error", "Could not access the webcam.")
                 return
 
-            # Read a few throwaway frames to let the camera sensor adjust exposure
             for _ in range(5):
                 cap.read()
 
@@ -369,7 +404,6 @@ class MemberPieApp:
         except Exception as e:
             messagebox.showerror("Error", f"Webcam error: {e}")
         finally:
-            # Ensure the camera is always released and cursor is restored
             if 'cap' in locals() and cap.isOpened():
                 cap.release()
             self.form_win.config(cursor="")
